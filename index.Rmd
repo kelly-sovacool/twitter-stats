@@ -1,0 +1,99 @@
+---
+title: "Having fun playing with Twitter data"
+author: "Kelly Sovacool"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+output:
+  html_document:
+    theme: "yeti"
+    toc: true
+    toc_float: true
+github-repo: kelly-sovacool/twitter-stats
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "docs") })
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = 'figures/'
+)
+```
+
+
+```{r deps, message = FALSE}
+library(here)
+library(tidyverse)
+library(rtweet)
+```
+
+```{r get_keys}
+keys_dir <- '.keys/'
+key_files <- list.files(here(keys_dir))
+keys <- vector(mode = 'character', length = length(key_files))
+names(keys) <- key_files
+for (f in key_files) {
+    keys[f] <- read_file(here(keys_dir, f)) 
+}
+```
+
+```{r authenticate, eval = FALSE}
+# this requires Elevated access to the Twitter API
+auth_as(rtweet_bot(
+  api_key = keys[['API_Key']],
+  api_secret = keys[['API_Key_Secret']],
+  access_token = keys[["Access_Token"]],
+  access_secret = keys[['Access_Token_Secret']]
+))
+# instead do this
+auth_setup_default()
+```
+
+```{r get_my_tweets}
+my_username <- 'kelly_sovacool'
+me <- lookup_users(my_username)
+num_tweets <- me[['statuses_count']]
+#my_tweets_all <- get_timeline(user = me[['id']], n = num_tweets, retryonratelimit = TRUE) # Error: $ operator is invalid for atomic vectors 
+my_tweets <- get_timeline(user = me[['id']], n = 1000)
+my_tweets_orig <- my_tweets %>% filter(!startsWith(text, 'RT @')) # no retweets
+```
+
+```{r plot_hist}
+my_tweets_orig %>% 
+    filter(is.na(in_reply_to_status_id)) %>% 
+    pivot_longer(c(favorite_count, retweet_count),
+                 names_to = 'engagement_type',
+                 values_to = 'engagement_count') %>% 
+    ggplot(aes(engagement_count, fill = engagement_type)) +
+    geom_histogram(alpha = 0.7) +
+    facet_wrap('engagement_type', nrow = 1, scales = 'free') +
+    labs(x = '') +
+    theme_bw() +
+    theme(legend.position = 'none')
+```
+
+## most liked tweets
+
+```{r most_liked, results = 'asis'}
+most_liked <- my_tweets_orig %>% 
+    slice_max(favorite_count, n = 5)
+embeds <- 
+    sapply(most_liked %>% pull('id_str'), 
+           function(x) { cat(tweet_embed(screen_name = my_username, 
+                                     status_id = x))
+               })
+```
+
+
+## most retweeted tweets
+
+```{r most_rtd, results = 'asis'}
+most_rtd <- my_tweets_orig %>% 
+    slice_max(retweet_count, n = 5)
+embeds <- 
+    sapply(most_rtd %>% pull('id_str'), 
+           function(x) { cat(tweet_embed(screen_name = my_username, 
+                                     status_id = x))
+               })
+```
+
