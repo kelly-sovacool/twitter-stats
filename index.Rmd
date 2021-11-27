@@ -36,8 +36,8 @@ my_username <- 'kelly_sovacool'
 me <- lookup_users(my_username)
 num_tweets <- me[['statuses_count']]
 #my_tweets_all <- get_timeline(user = me[['id']], n = num_tweets, retryonratelimit = TRUE) # Error: $ operator is invalid for atomic vectors 
-my_tweets <- get_timeline(user = me[['id']], 
-                          n = 1100, 
+my_tweets <- get_timeline(user = me[['id']],
+                          n = 1163, # 1164 failed, 1163 worked
                           retryonratelimit = TRUE)
 my_tweets_orig <- my_tweets %>% 
   filter(!startsWith(text, 'RT @')) # no retweets
@@ -45,15 +45,49 @@ my_tweets_orig_noreplies <- my_tweets_orig %>%
     filter(is.na(in_reply_to_status_id)) # no replies
 ```
 
+Why does `get_timeline` fail  for my account with `n > 1163`?
+
+```{r investigate, warning=TRUE, eval=FALSE}
+oldest_tweet <- my_tweets[nrow(my_tweets), ]
+print(oldest_tweet[['id_str']]) # this will change as I tweet more
+# https://twitter.com/kelly_sovacool/status/1105862504889110534
+older_tweets <- get_timeline(user = me[['id']],
+                             n = 1,
+                             max_id = "1105862504889110534")
+```
+
+this might be fixed by https://github.com/ropensci/rtweet/pull/627
+
+```{r fixattempt, warning=TRUE, eval=FALSE}
+#devtools::install_github('ropensci/rtweet@coordinates')
+my_tweets_all <- get_timeline(user = me[['id']], n = num_tweets, retryonratelimit = TRUE)
+```
+
+uh nope didn't work. will continue using tweets newer than "1105862504889110534"
+
 ## most liked tweets
+
+```{r}
+print_embed <- function(status_id, tcount, screen_name = 'kelly_sovacool', 
+                        type = 'likes', n = 1) {
+  emoji <- if_else(type == 'likes', '❤️','🔁')
+  cat('#### ', n, ".  ", emoji, '**', tcount, '**\n',
+      tweet_embed(screen_name = screen_name, status_id = status_id),
+      sep = "")
+}
+```
+
 
 ```{r most_liked, results = 'asis'}
 most_liked <- my_tweets_orig %>% 
     slice_max(favorite_count, n = 5)
+n <- 0
 embeds <- 
-    sapply(most_liked %>% pull('id_str'), 
-           function(x) { cat(tweet_embed(screen_name = my_username, 
-                                     status_id = x))
+    apply(most_liked, MARGIN = 1, 
+           function(tweet) { 
+             n <<- n + 1
+             print_embed(tweet[['id_str']], tweet[['favorite_count']], 
+                         type = 'likes', n = n)
                })
 ```
 
@@ -63,10 +97,13 @@ embeds <-
 ```{r most_rtd, results = 'asis'}
 most_rtd <- my_tweets_orig %>% 
     slice_max(retweet_count, n = 5)
+n <- 0
 embeds <- 
-    sapply(most_rtd %>% pull('id_str'), 
-           function(x) { cat(tweet_embed(screen_name = my_username, 
-                                     status_id = x))
+    apply(most_rtd, MARGIN = 1, 
+           function(tweet) { 
+             n <<- n + 1
+             print_embed(tweet[['id_str']], tweet[['retweet_count']], 
+                         type = 'retweets', n = n)
                })
 ```
 
@@ -79,7 +116,7 @@ my_tweets_orig_noreplies %>%
                  values_to = 'engagement_count') %>% 
     ggplot(aes(engagement_count, fill = engagement_type)) +
     geom_histogram(alpha = 0.7) +
-    facet_wrap('engagement_type', nrow = 1, scales = 'free') +
+    facet_wrap('engagement_type', nrow = 1) +
     labs(x = '') +
     theme_bw() +
     theme(legend.position = 'none')
